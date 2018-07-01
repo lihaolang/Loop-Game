@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8"/>
+<title>Loop</title>
+
+<style>
+
+html body {
+	position:absolute;
+	width:100%;
+	height:100%;
+	margin:0px;
+	padding:0px;
+	overflow:hidden;
+	-webkit-user-select:none;
+}
+
+div#main-panel {
+	width:100%;
+	height:100%;
+	display:grid;
+	grid-template-rows:8% 1fr 8%;
+	grid-template-columns:10% 1fr 10%;
+}
+
+div#game-panel {
+	grid-row-start:2;
+	grid-column-start:2;
+	display:none;
+}
+
+div#title-panel {
+	grid-row-start:2;
+	grid-column-start:2;
+	display:table;
+}
+
+div#title {
+	display:table-cell;
+	vertical-align:middle;
+	text-align:center;
+	font-size:7em;
+	font-weight:200;
+}
+
+</style>
+
+<script>
+
+function onGameLoad(){
+	gameApp=new GameApp();
+	gameApp.prepareLevel();
+}
+
+function onCellClick(event){
+	let cell=event.target;
+	
+	let oldTrans=gameApp.getCellTransform(cell.cellData,true);
+	cell.cellData.r++;
+	let newTrans=gameApp.getCellTransform(cell.cellData,true);
+	
+	let animate=cell.animate([
+	{transform:oldTrans},
+	{transform:newTrans}
+	],{duration:250,fill:'forwards'});
+	
+	animate.onfinish=onCellRouteFinish;
+	animate.play();
+}
+
+function onPanelClick(){
+	if (gameApp.gameState=='title'){
+		gameApp.gameState='game';
+		gameApp.startLevel();
+	}
+}
+
+function onCellRouteFinish(){
+	if (gameApp.checkGame()) {
+		gameApp.gameLevel+=1;
+		gameApp.prepareLevel();
+	}
+	return true;
+}
+
+function GameApp() {
+	this.gameState='';
+	this.gameDataOffset=0;
+	this.gameLevel=1;
+	this.panelWidth=0;
+	this.panelHeight=0;
+	this.cellSize=0;
+	this.color=-1;
+	this.offX=0;
+	this.offY=0;
+	this.sizeX=0;
+	this.sizeY=0;
+	this.levelData=[];
+	this.checkBoard=[];
+}
+
+GameApp.prototype.fetchLevelData=function () {
+	let eleNum=gameData[this.gameDataOffset];
+	if (eleNum==null) return false;
+	this.color=gameData[this.gameDataOffset+1];
+	this.levelData=[];
+	let offset=this.gameDataOffset+2;
+	this.sizeX=0;
+	this.sizeY=0;
+	for (let idx=0;idx<eleNum;idx++){
+		let off=offset+idx*4;
+		let kX=gameData[off++];
+		let kY=gameData[off++];
+		this.sizeX=Math.max(this.sizeX,kX);
+		this.sizeY=Math.max(this.sizeY,kY);
+		this.levelData.push({
+			x:kX,y:kY,
+			n:gameData[off++],
+			r:gameData[off]
+		});
+	}
+	this.sizeX+=1;
+	this.sizeY+=1;
+	this.gameDataOffset+=eleNum*4+2;
+	
+	this.checkBoard=new Array(this.sizeX);
+	for (let idx=0;idx<this.checkBoard.length;idx++){
+		this.checkBoard[idx]=new Array(this.sizeY);
+	}
+	
+	return true;
+}
+
+GameApp.prototype.fitGeometry=function (panel) {
+	//let panel=document.getElementById('game-panel');
+	this.panelWidth=panel.clientWidth;
+	this.panelHeight=panel.clientHeight;
+	this.cellSize=Math.min(this.panelWidth/this.sizeX,this.panelHeight/this.sizeY,maxCellSize);
+	this.offX=(this.panelWidth-this.cellSize*this.sizeX)/2;
+	this.offY=(this.panelHeight-this.cellSize*this.sizeY)/2;
+}
+
+GameApp.prototype.getCellTransform=function(scell,flag){
+	let mUnit,aUni;
+	if (flag) {
+		mUnit='px';
+		aUnit='deg';
+	}else {
+		mUnit='';
+		aUnit='';
+	}
+	let res='scale('+this.cellSize/svgCellSize+')';
+	res='rotate('+scell.r*90+aUnit+') '+res;
+	res='translate('+(scell.x*this.cellSize+this.offX)+mUnit+','
+		+(scell.y*this.cellSize+this.offY)+mUnit+') '+res;
+		
+	return res;
+}
+
+GameApp.prototype.createGame=function () {
+	
+	let svg=document.getElementById('svg-panel');
+	
+	let rmv=[]
+	for (let ele of svg.childNodes){
+		if (ele.nodeName=='use'){
+			rmv.push(ele);
+		}
+	}
+	for (let ele of rmv){
+		svg.removeChild(ele);
+	}
+	
+	for (scell of this.levelData) {
+		let dcell=document.createElementNS('http://www.w3.org/2000/svg','use');
+		dcell.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href','#sample-'+(scell.n+1));
+		dcell.setAttribute('transform',this.getCellTransform(scell,false));
+		dcell.cellData=scell;
+		dcell.setAttribute('onclick','onCellClick(evt)');
+		svg.appendChild(dcell);
+		
+		this.checkBoard[scell.x][scell.y]=scell;
+	}
+	
+}
+
+GameApp.prototype.preparePattle=function () {
+	let frontGround=gamePattle[this.color].frontGround;
+	let backGround=gamePattle[this.color].backGround;
+	let gameStyle=document.getElementById('game-style');
+	
+	{
+		let newStyle='use{--solid-stroke-color:'
+			+frontGround+';--reverse-stroke-color:none;}';
+		newStyle+='body.reverse use {--solid-stroke-color:none;--reverse-stroke-color:'+backGround+';}'
+		newStyle+='#main-panel {background:'+backGround+';}';
+		newStyle+='body.reverse #main-panel {background:'
+			+frontGround+';}';
+		newStyle+='#title{color:'+frontGround+';}';
+		gameStyle.innerHTML=newStyle;
+	}
+}
+
+GameApp.prototype.checkGame=function () {
+	
+	//Top:0,Right:1,Botton:2,Left:3
+	const cellChkInfo=[
+		//Sample-1
+		[[0,3],[0,1],[1,2],[2,3]],
+		//Sample-2
+		[[3,0,1],[0,1,2],[1,2,3],[0,2,3]],
+		//Sample-3
+		[[0,1,2,3],[0,1,2,3],[0,1,2,3],[0,1,2,3]],
+		//Sample-4
+		[[1,3],[0,2],[1,3],[0,2]],
+		//Sample-5
+		[[0],[1],[2],[3]]
+	];
+	
+	let app=this;
+	
+	function getNearCell(x,y,ptr) {
+		let rx=x,ry=y;
+		switch (ptr){
+		case 0:ry-=1;break;
+		case 1:rx+=1;break;
+		case 2:ry+=1;break;
+		case 3:rx-=1;break;
+		}
+		return app.checkBoard[rx][ry];
+	}
+	
+	function getOptPtr(ptr){
+		return [2,3,0,1][ptr];
+	}
+	
+	for (let column of this.checkBoard){
+		for (let cell of column){
+			if (cell==undefined) continue;
+			let ptrs=cellChkInfo[cell.n][cell.r&3];
+			for (let ptr of ptrs){
+				let nCell=getNearCell(
+					cell.x,cell.y,ptr);
+				if (nCell==null) {
+					return false;
+				}
+				let nPtrs=cellChkInfo[nCell.n][nCell.r&3];
+				if (nPtrs.indexOf(getOptPtr(ptr))==-1){
+					return false;
+				}
+			}
+		}
+	}
+	
+	return true;
+	
+}
+
+GameApp.prototype.prepareTitle=function () {
+	let titlePanel=document.getElementById('title-panel');
+	let title=document.getElementById('title');
+	title.innerHTML='#'+this.gameLevel;
+	titlePanel.style.display='table';
+	this.gameState='title';
+}
+
+GameApp.prototype.prepareLevel=function () {
+	if (!this.fetchLevelData()) return false;
+	let panel=document.getElementById('game-panel');
+	panel.style.display='none';
+	this.preparePattle();
+	this.prepareTitle();
+	
+}
+
+GameApp.prototype.startLevel=function () {
+	let panel=document.getElementById('game-panel');
+	let titlePanel=document.getElementById('title-panel');
+	titlePanel.style.display='none';
+	panel.style.display='block';
+	this.fitGeometry(panel);
+	this.createGame();
+}
+
+</script>
+
+<style id="game-style">
+	use {
+		--solid-stroke-color:black;
+		--reverse-stroke-color:none;
+	}
+	body.reverse use {
+		--solid-stroke-color:none;
+		--reverse-stroke-color:red;
+	}
+	#main-panel {
+		background:white;
+	}
+	body.reverse #main-panel {
+		background:black;
+	}
+	#title{
+		color:red;
+	}
+</style>
+
+</head>
+
+<body onload="onGameLoad()">
+
+<div id="main-panel" onclick="onPanelClick()">
+<div id="title-panel">
+<div id="title">
+</div></div>
+<div id="game-panel">
+
+<svg id="svg-panel" xmlns="http://www.w3.org/2000/svg" version="1.1" width="100%" height="100%">
+
+<style>
+	circle {
+		fill:none;
+	}
+	use {
+		--solid-stroke-width:10;
+		--reverse-stroke-width:3;
+		--rect-fill:rgba(0,0,0,0);
+		--high-stroke-color:white;
+		--high-stroke-width:1.5;
+	}
+	body.reverse use {
+		--rect-fill:none;
+		--high-stroke-color:none;
+	}
+</style>
+
+<symbol>
+	<g id="sample-back">
+		<rect x="-50" y="-50" width="100" height="100" fill="transparent" stroke="none"/>
+	</g>
+
+	<g id="sample-1">
+		<use xlink:href="#sample-back"/>
+		<circle cx="-50" cy="-50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="78.539815,1000000"/>
+		<circle cx="-50" cy="-50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="74.612826,1000000"/>
+		<circle cx="-50" cy="-50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="82.466807,1000000"/>
+	</g>
+	
+	
+	<g id="sample-2">
+		<use xlink:href="#sample-back"/>
+		<circle cx="-50" cy="-50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="78.539815,1000000"/>
+		<circle cx="-50" cy="-50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="74.612826,1000000"/>
+		<circle cx="-50" cy="-50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,18.2,63.666807,1000000"/>
+		<circle cx="50" cy="-50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="0,78.539815,78.539815,1000000"/>
+		<circle cx="50" cy="-50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,74.612826,74.612826,1000000"/>
+		<circle cx="50" cy="-50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,82.466807,82.466807,1000000"/>
+		<circle cx="50" cy="-50" r="55" stroke="var(--high-stroke-color)" stroke-width="var(--high-stroke-width)" stroke-dasharray="0,148,24,1000000"/>
+	</g>
+	
+	<g id="sample-3">
+		<use xlink:href="#sample-back"/>
+		<circle cx="-50" cy="-50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="78.539815,1000000"/>
+		<circle cx="-50" cy="-50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="74.612826,1000000"/>
+		<circle cx="-50" cy="-50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,18.2,63.666807,1000000"/>
+		
+		<circle cx="50" cy="-50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="0,78.539815,78.539815,1000000"/>
+		<circle cx="50" cy="-50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,74.612826,74.612826,1000000"/>
+		<circle cx="50" cy="-50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,97.466807,66.466807,1000000"/>
+		<circle cx="50" cy="-50" r="55" stroke="var(--high-stroke-color)" stroke-width="var(--high-stroke-width)" stroke-dasharray="0,148,24,1000000"/>
+		
+		<circle cx="50" cy="50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="0,157.07963,78.539815,1000000"/>
+		<circle cx="50" cy="50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,180.93361,66.466807,1000000"/>
+		<circle cx="50" cy="50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,149.225652,74.612826,1000000"/>
+		<circle cx="50" cy="50" r="55" stroke="var(--high-stroke-color)" stroke-width="var(--high-stroke-width)" stroke-dasharray="0,235,24,1000000"/>
+		
+		<circle cx="-50" cy="50" r="50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)" stroke-dasharray="0,235.619445,78.539815,1000000"/>
+		<circle cx="-50" cy="50" r="52.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,265,87.466807,1000000"/>
+		<circle cx="-50" cy="50" r="47.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="0,223.838478,74.612826,1000000"/>
+		<circle cx="-50" cy="50" r="55" stroke="var(--high-stroke-color)" stroke-width="var(--high-stroke-width)" stroke-dasharray="0,320,24,1000000"/>
+		
+		<circle cx="-50" cy="-50" r="55" stroke="var(--high-stroke-color)" stroke-width="var(--high-stroke-width)" stroke-dasharray="0,62,24,1000000"/>
+		
+	</g>
+	
+	<g id="sample-4">
+		<use xlink:href="#sample-back"/>
+		<line x1="-50" y1="0" x2="50" y2="0" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)"/>
+		<line x1="-50" y1="-2.5" x2="50" y2="-2.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)"/>
+		<line x1="-50" y1="2.5" x2="50" y2="2.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)"/>
+	</g>
+	
+	<g id="sample-5">
+		<use xlink:href="#sample-back"/>
+		<circle cx="0" cy="0" r="25" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)"/>
+		<line x1="0" y1="-25" x2="0" y2="-50" stroke="var(--solid-stroke-color)" stroke-width="var(--solid-stroke-width)"/>
+		<circle cx="0" cy="0" r="22.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)"/>
+		<circle cx="0" cy="0" r="27.5" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)" stroke-dasharray="128.5,5,100,10000"/>
+		<line x1="-2.5" y1="-50" x2="-2.5" y2="-26" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)"/>
+		<line x1="2.5" y1="-50" x2="2.5" y2="-26" stroke="var(--reverse-stroke-color)" stroke-width="var(--reverse-stroke-width)"/>
+	</g>
+</symbol>
+
+</svg>
+
+</div></div>
+
+<!--Game Global Data-->
+<script>
+
+var gameApp;
+
+const maxCellSize=80;
+
+const svgCellSize=100;
+
+const gamePattle=[
+{frontGround:'rgb(255,0,0)',backGround:'rgb(266,160,160)'}
+];
+
+//{num,color,{x,y,n,rot}...}
+const gameData=[
+6,0,0,0,0,1,1,0,1,2,2,0,0,3,0,1,0,1,1,1,1,0,2,1,0,3,//Level 1
+8,0,
+0,0,0,2,
+1,0,0,2,
+2,0,0,3,
+3,0,0,3,
+0,1,0,1,
+1,1,0,1,
+2,1,0,0,
+3,1,0,0//Level 2
+];
+
+</script>
+
+</body>
+
+</html>
